@@ -4,16 +4,17 @@ namespace App\Http\Controllers\Parent;
 
 use App\Http\Controllers\Controller;
 use App\Models\School;
+use Illuminate\Http\JsonResponse;
 
 class SchoolPhotoController extends Controller
 {
-    public function index(School $school)
+    public function index(School $school): JsonResponse
     {
-        // Only show photos publicly (no auth required)
         $photos = $school->photos()->latest()->get();
 
-        return view('parent.schools.photos', compact('school', 'photos'));
+        return response()->json([
+            'school_name' => $school->name,
+            'photos' => $photos
+        ]);
     }
 }
-
-

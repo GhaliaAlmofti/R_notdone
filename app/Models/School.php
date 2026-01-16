@@ -2,14 +2,17 @@
 
 namespace App\Models;
 
-use App\Models\User;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\HasManyThrough;
+use Illuminate\Support\Facades\Storage; // Added for URL generation
 
 class School extends Model
 {
+    // ✅ 1. Tell Laravel to always include the 'logo' and 'avg_rating' in JSON
+    protected $appends = ['logo'];
+
     protected $fillable = [
         'name',
         'slug',
@@ -28,7 +31,29 @@ class School extends Model
     ];
 
     /**
-     * ✅ School admin (User)
+     * ✅ 2. The "Logo Bridge" for React
+     * This creates a $school->logo property that returns a full URL.
+     */
+    public function getLogoAttribute(): string
+    {
+        if ($this->logo_path) {
+            return asset('storage/' . $this->logo_path);
+        }
+
+        // Return a placeholder if no logo exists
+        return asset('images/default-school-logo.png');
+    }
+
+    /**
+     * Use slug for route model binding
+     */
+    public function getRouteKeyName(): string
+    {
+        return 'slug';
+    }
+
+    /**
+     * School admin (User)
      */
     public function admin(): BelongsTo
     {
@@ -52,32 +77,23 @@ class School extends Model
             ->where('status', 'approved');
     }
 
+    public function photos(): HasMany
+    {
+        return $this->hasMany(SchoolPhoto::class);
+    }
+
     /**
-     * Parents who reviewed this school (through reviews)
+     * Parents who reviewed this school
      */
     public function reviewers(): HasManyThrough
     {
         return $this->hasManyThrough(
             User::class,
             Review::class,
-            'school_id', // FK on reviews table
-            'id',        // FK on users table
-            'id',        // Local key on schools
-            'user_id'    // Local key on reviews
+            'school_id',
+            'id',
+            'id',
+            'user_id'
         );
-    }
-
-    /**
-     * Use slug for route model binding
-     */
-    public function getRouteKeyName(): string
-    {
-        return 'slug';
-    }
-
-    
-    public function photos()
-    {
-        return $this->hasMany(\App\Models\SchoolPhoto::class);
     }
 }

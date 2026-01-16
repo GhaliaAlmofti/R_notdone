@@ -5,45 +5,32 @@ namespace App\Http\Controllers\Auth;
 use App\Http\Controllers\Controller;
 use App\Models\User;
 use Illuminate\Auth\Events\Registered;
-use Illuminate\Http\RedirectResponse;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Validation\Rules;
-use Illuminate\View\View;
 
 class RegisteredUserController extends Controller
 {
     /**
-     * Display the registration view.
-     */
-    public function create(): View
-    {
-        return view('auth.register');
-    }
-
-    /**
      * Handle an incoming registration request.
-     *
-     * @throws \Illuminate\Validation\ValidationException
+     * React will POST to this method.
      */
-    public function store(Request $request): RedirectResponse
+    public function store(Request $request): JsonResponse
     {
         $validated = $request->validate([
             'name' => ['required', 'string', 'max:255'],
             'email' => ['required', 'string', 'lowercase', 'email', 'max:255', 'unique:users,email'],
 
-            // phone is REQUIRED
+            // phone is REQUIRED for Benghazi school parents
             'phone' => ['required', 'string', 'max:20'],
 
             // city optional
             'city' => ['nullable', 'string', 'max:255'],
 
-            // must be checked
+            // must be checked in the React checkbox
             'terms_accepted' => ['accepted'],
-
-            // parent only for now
-            'role' => ['nullable', 'in:parent'],
 
             'password' => ['required', 'confirmed', Rules\Password::defaults()],
         ]);
@@ -54,14 +41,24 @@ class RegisteredUserController extends Controller
             'phone' => $validated['phone'],
             'city' => $validated['city'] ?? null,
             'terms_accepted' => true,
-            'role' => $validated['role'] ?? 'parent',
+            'role' => 'parent', // Force role to parent for public registration
             'password' => Hash::make($validated['password']),
         ]);
 
+        // Trigger Laravel's built-in registration event (useful for emails)
         event(new Registered($user));
+
+        // Log the user in on the server-side
         Auth::login($user);
 
-        // ✅ Redirect to Schools page after registration
-        return redirect()->route('parent.schools.index');
+        // Generate the token for the React Frontend to store
+        $token = $user->createToken('auth_token')->plainTextToken;
+
+        return response()->json([
+            'message' => 'User registered successfully',
+            'user' => $user,
+            'token' => $token,
+            'role' => $user->role,
+        ], 201); // 201 means "Created"
     }
 }

@@ -6,60 +6,81 @@ use App\Http\Controllers\Controller;
 use App\Models\SchoolPhoto;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Storage;
+use Illuminate\Http\JsonResponse;
 
 class SchoolPhotoController extends Controller
 {
-    public function index()
+    /**
+     * Get all photos for the school admin's gallery.
+     */
+    public function index(): JsonResponse
     {
         $school = auth()->user()->adminSchool;
 
-        abort_if(!$school, 403);
+        if (!$school) {
+            return response()->json(['message' => 'No school assigned.'], 403);
+        }
 
         $photos = $school->photos()->latest()->get();
 
-        return view('school_admin.photos.index', compact('school', 'photos'));
+        return response()->json([
+            'photos' => $photos
+        ]);
     }
 
-    public function store(Request $request)
+    /**
+     * Upload photos via React.
+     */
+    public function store(Request $request): JsonResponse
     {
         $school = auth()->user()->adminSchool;
 
-        abort_if(!$school, 403);
-
-        $data = $request->validate([
-            'photos'   => ['required', 'array', 'min:1'],
-            'photos.*' => ['image', 'mimes:jpg,jpeg,png,webp', 'max:4096'],
-        ]);
-
-        foreach ($data['photos'] as $file) {
-            // store in: storage/app/public/schools/{school_id}/photos/...
-            $path = $file->store("schools/{$school->id}/photos", 'public');
-
-            $school->photos()->create([
-                'path' => $path,
-            ]);
+        if (!$school) {
+            return response()->json(['message' => 'Unauthorized.'], 403);
         }
 
-        return back()->with('success', __('Photos uploaded successfully.'));
+        $request->validate([
+            'photos'   => ['required', 'array', 'min:1'],
+            'photos.*' => ['image', 'mimes:jpg,jpeg,png,webp', 'max:5120'], // 5MB limit
+        ]);
+
+        $savedPhotos = [];
+
+        foreach ($request->file('photos') as $file) {
+            $path = $file->store("schools/{$school->id}/photos", 'public');
+
+            $photo = $school->photos()->create([
+                'path' => $path, // Make sure your DB column is 'path'
+            ]);
+
+            $savedPhotos[] = $photo;
+        }
+
+        return response()->json([
+            'message' => __('Photos uploaded successfully.'),
+            'photos' => $savedPhotos
+        ], 201);
     }
 
-    public function destroy(SchoolPhoto $photo)
+    /**
+     * Delete a photo.
+     */
+    public function destroy(SchoolPhoto $photo): JsonResponse
     {
         $school = auth()->user()->adminSchool;
 
-        abort_if(!$school, 403);
+        if (!$school || $photo->school_id !== $school->id) {
+            return response()->json(['message' => 'Unauthorized.'], 403);
+        }
 
-        // ensure photo belongs to this admin's school
-        abort_if($photo->school_id !== $school->id, 403);
-
-        // delete file
         if ($photo->path && Storage::disk('public')->exists($photo->path)) {
             Storage::disk('public')->delete($photo->path);
         }
 
         $photo->delete();
 
-        return back()->with('success', __('Photo deleted.'));
+        return response()->json([
+            'message' => __('Photo deleted successfully.')
+        ]);
     }
 }
-

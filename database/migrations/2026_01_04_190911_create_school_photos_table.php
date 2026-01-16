@@ -10,20 +10,18 @@ return new class extends Migration
      * Run the migrations.
      */
     public function up(): void
-{
-    Schema::create('school_photos', function (\Illuminate\Database\Schema\Blueprint $table) {
-        $table->id();
+    {
+        Schema::create('school_photos', function (Blueprint $table) {
+            $table->id();
+            $table->foreignId('school_id')->constrained()->cascadeOnDelete();
 
-        $table->foreignId('school_id')
-            ->constrained()
-            ->cascadeOnDelete();
+            // Change 'path' to 'file_path' to match your model
+            $table->string('file_path');
 
-        $table->string('path'); // stored relative path like: schools/1/photos/xxx.jpg
-        $table->string('caption')->nullable(); // optional, for later
-
-        $table->timestamps();
-    });
-}
+            $table->string('caption')->nullable();
+            $table->timestamps();
+        });
+    }
 
 
     /**

@@ -6,23 +6,26 @@ use App\Http\Controllers\Controller;
 use App\Models\School;
 use App\Models\User;
 use Illuminate\Http\Request;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Str;
 
 class SchoolManagementController extends Controller
 {
-    public function index()
+    /**
+     * Display a listing of schools.
+     * React will fetch this to show in a Table.
+     */
+    public function index(): JsonResponse
     {
         $schools = School::with('admin')->latest()->paginate(10);
-        return view('admin.schools.index', compact('schools'));
+        return response()->json($schools);
     }
 
-    public function create()
-    {
-        return view('admin.schools.create');
-    }
-
-    public function store(Request $request)
+    /**
+     * Store a newly created school.
+     */
+    public function store(Request $request): JsonResponse
     {
         $data = $request->validate([
             'name' => ['required', 'string', 'max:255'],
@@ -32,16 +35,14 @@ class SchoolManagementController extends Controller
             'area' => ['required', 'string', 'max:255'],
             'category' => ['required', 'string', 'max:255'],
             'level' => ['required', 'string', 'max:255'],
-            'president_name' => ['nullable', 'string', 'max:255'],
-            'fees_range' => ['nullable', 'string', 'max:255'],
             'gender_type' => ['required', 'in:boys,girls,mixed'],
-            'curriculum' => ['nullable', 'string', 'max:255'],
+            // ... other fields ...
         ]);
 
+        // Slug Logic
         $baseSlug = Str::slug($data['name']);
         $slug = $baseSlug;
         $i = 2;
-
         while (School::where('slug', $slug)->exists()) {
             $slug = $baseSlug . '-' . $i;
             $i++;
@@ -52,145 +53,90 @@ class SchoolManagementController extends Controller
             'admin_user_id' => null,
         ]));
 
-        return redirect()
-            ->route('admin.schools.assign_admin_form', $school)
-            ->with('success', __('School created. Now assign an admin.'));
+        return response()->json([
+            'message' => __('School created. Please assign an admin.'),
+            'school' => $school
+        ], 201);
     }
 
-    public function assignAdminForm(School $school)
+    /**
+     * Show a single school for the "Edit" form in React.
+     */
+    public function show(School $school): JsonResponse
     {
-        $admins = User::where('role', 'school_admin')
-            ->orderBy('name')
-            ->get();
-
-        return view('admin.schools.assign-admin', compact('school', 'admins'));
+        return response()->json($school->load('admin'));
     }
 
-    public function assignAdmin(Request $request, School $school)
+    /**
+     * Assign an admin to a school.
+     */
+    public function assignAdmin(Request $request, School $school): JsonResponse
     {
         $data = $request->validate([
             'existing_admin_id' => ['nullable', 'exists:users,id'],
             'new_admin_name' => ['nullable', 'string', 'max:255'],
-            'new_admin_email' => ['nullable', 'email', 'max:255'],
+            'new_admin_email' => ['nullable', 'email', 'max:255', 'unique:users,email'],
             'new_admin_password' => ['nullable', 'string', 'min:8'],
-            'phone' => ['nullable', 'string', 'max:20'],
-            'city' => ['nullable', 'string', 'max:255'],
         ]);
 
         $admin = null;
 
+        // 1. Logic for existing admin
         if (!empty($data['existing_admin_id'])) {
-            $admin = User::find($data['existing_admin_id']);
-
-            if ($admin->role !== 'school_admin') {
-                abort(403);
-            }
+            $admin = User::findOrFail($data['existing_admin_id']);
         }
-
-        if (!$admin) {
-            if (
-                empty($data['new_admin_name']) ||
-                empty($data['new_admin_email']) ||
-                empty($data['new_admin_password'])
-            ) {
-                return back()->withErrors([
-                    'new_admin_email' => __('Choose an existing admin or create a new admin (name, email, password).'),
-                ])->withInput();
-            }
-
+        // 2. Logic for creating new admin
+        elseif (!empty($data['new_admin_email'])) {
             $admin = User::create([
                 'name' => $data['new_admin_name'],
                 'email' => $data['new_admin_email'],
                 'password' => Hash::make($data['new_admin_password']),
                 'role' => 'school_admin',
-                'phone' => $data['phone'] ?? null,
-                'city' => $data['city'] ?? null,
                 'terms_accepted' => true,
             ]);
         }
 
-        // One admin → one school rule
-        $alreadyAssigned = School::where('admin_user_id', $admin->id)
-            ->where('id', '!=', $school->id)
-            ->exists();
-
-        if ($alreadyAssigned) {
-            return back()->withErrors([
-                'existing_admin_id' => __('This admin is already assigned to another school.'),
-            ])->withInput();
+        if (!$admin) {
+            return response()->json(['error' => 'No admin provided'], 422);
         }
 
-        $school->update([
-            'admin_user_id' => $admin->id,
+        $school->update(['admin_user_id' => $admin->id]);
+
+        return response()->json([
+            'message' => __('Admin assigned successfully.'),
+            'school' => $school->load('admin')
         ]);
-
-        return redirect()
-            ->route('admin.schools.index')
-            ->with('success', __('School admin assigned successfully.'));
     }
 
-    /* ============================================================
-       =============== ADDED METHODS (AS REQUESTED) ================
-       ============================================================ */
-
-    public function edit(School $school)
-    {
-        return view('admin.schools.edit', compact('school'));
-    }
-
-    public function update(Request $request, School $school)
+    /**
+     * Update the school details.
+     */
+    public function update(Request $request, School $school): JsonResponse
     {
         $data = $request->validate([
             'name' => ['required', 'string', 'max:255'],
-            'email' => ['nullable', 'email', 'max:255'],
-            'phone' => ['nullable', 'string', 'max:20'],
-            'address' => ['nullable', 'string', 'max:255'],
-            'area' => ['required', 'string', 'max:255'],
-            'category' => ['required', 'string', 'max:255'],
-            'level' => ['required', 'string', 'max:255'],
-            'president_name' => ['nullable', 'string', 'max:255'],
-            'fees_range' => ['nullable', 'string', 'max:255'],
-            'gender_type' => ['required', 'in:boys,girls,mixed'],
-            'curriculum' => ['nullable', 'string', 'max:255'],
+            'area' => ['required', 'string'],
+            // ... other fields ...
         ]);
 
         if ($data['name'] !== $school->name) {
-            $baseSlug = Str::slug($data['name']);
-            $slug = $baseSlug;
-            $i = 2;
-
-            while (
-                School::where('slug', $slug)
-                    ->where('id', '!=', $school->id)
-                    ->exists()
-            ) {
-                $slug = $baseSlug . '-' . $i;
-                $i++;
-            }
-
-            $data['slug'] = $slug;
+            $data['slug'] = Str::slug($data['name']); // Simple re-slug
         }
 
         $school->update($data);
 
-        return redirect()
-            ->route('admin.schools.index')
-            ->with('success', __('School updated successfully.'));
+        return response()->json([
+            'message' => __('School updated successfully.'),
+            'school' => $school
+        ]);
     }
 
-    public function destroy(School $school)
+    /**
+     * Remove the school.
+     */
+    public function destroy(School $school): JsonResponse
     {
         $school->delete();
-
-        return redirect()
-            ->route('admin.schools.index')
-            ->with('success', __('School deleted successfully.'));
-    }
-
-    public function unassignAdmin(School $school)
-    {
-        $school->update(['admin_user_id' => null]);
-
-        return back()->with('success', __('School admin removed from this school.'));
+        return response()->json(['message' => __('School deleted successfully.')]);
     }
 }

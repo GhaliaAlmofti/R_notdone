@@ -3,100 +3,58 @@
 namespace App\Http\Controllers\SchoolAdmin;
 
 use App\Http\Controllers\Controller;
-use App\Http\Requests\UpdateSchoolRequest;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Storage;
-use App\Models\SchoolPhoto;
+use Illuminate\Http\JsonResponse;
 
 class SchoolProfileController extends Controller
 {
-    public function edit()
+    /**
+     * Get the school profile for the React form.
+     */
+    public function edit(): JsonResponse
     {
+        // Use 'adminSchool' relationship for consistency
         $school = auth()->user()->adminSchool;
 
         if (!$school) {
-            abort(404);
+            return response()->json(['message' => 'No school assigned to this admin.'], 404);
         }
 
-        $photos = $school->photos()->latest()->get();
+        // Load photos so React can show the current gallery
+        $school->load('photos');
 
-        // ✅ Published (approved) reviews for THIS school only, newest first
-        $publishedReviews = $school->reviews()
-            ->where('status', 'approved')
-            ->latest()
-            ->get();
-
-        return view('school_admin.school.edit', compact('school', 'photos', 'publishedReviews'));
+        return response()->json([
+            'school' => $school
+        ]);
     }
 
-    public function update(UpdateSchoolRequest $request)
+    /**
+     * Update school profile (Text fields + Logo)
+     */
+    public function update(Request $request): JsonResponse
     {
         $school = auth()->user()->adminSchool;
 
-        if (!$school) {
-            abort(404);
-        }
-
-        $data = $request->validated();
-
-        if ($request->hasFile('logo')) {
-            if ($school->logo_path && Storage::disk('public')->exists($school->logo_path)) {
-                Storage::disk('public')->delete($school->logo_path);
-            }
-
-            $data['logo_path'] = $request->file('logo')
-                ->store('uploads/schools/logos', 'public');
-        }
-
-        unset($data['admin_user_id']);
-
-        $school->update($data);
-
-        return back()->with('success', __('School profile updated successfully.'));
-    }
-
-    public function storePhotos(Request $request)
-    {
-        $school = auth()->user()->adminSchool;
-
-        if (!$school) {
-            abort(404);
-        }
-
-        $request->validate([
-            'photos'   => 'required|array',
-            'photos.*' => 'image|max:2048',
+        $validated = $request->validate([
+            'name' => 'required|string|max:255',
+            'phone' => 'nullable|string|max:20',
+            'address' => 'nullable|string',
+            'logo' => 'nullable|image|mimes:jpeg,png,jpg,webp|max:2048',
         ]);
 
-        foreach ($request->file('photos') as $photo) {
-            $path = $photo->store('uploads/schools/photos', 'public');
-
-            $school->photos()->create([
-                'path' => $path,
-            ]);
+        if ($request->hasFile('logo')) {
+            if ($school->logo_path) {
+                Storage::disk('public')->delete($school->logo_path);
+            }
+            $validated['logo_path'] = $request->file('logo')->store('logos', 'public');
         }
 
-        return back()
-            ->with('success', __('Photos uploaded successfully.'))
-            ->with('tab', 'photos');
-    }
+        $school->update($validated);
 
-    public function destroyPhoto(SchoolPhoto $photo)
-    {
-        $school = auth()->user()->adminSchool;
-
-        if (!$school || $photo->school_id !== $school->id) {
-            abort(403);
-        }
-
-        if (Storage::disk('public')->exists($photo->path)) {
-            Storage::disk('public')->delete($photo->path);
-        }
-
-        $photo->delete();
-
-        return back()
-            ->with('success', __('Photo deleted.'))
-            ->with('tab', 'photos');
+        return response()->json([
+            'message' => 'Profile updated successfully',
+            'school' => $school->fresh(['photos'])
+        ]);
     }
 }

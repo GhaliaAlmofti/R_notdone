@@ -3,7 +3,6 @@
 use Illuminate\Database\Migrations\Migration;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\Schema;
-use Illuminate\Support\Facades\DB;
 
 return new class extends Migration
 {
@@ -20,35 +19,26 @@ return new class extends Migration
                 ->constrained('users')->nullOnDelete();
 
             $table->text('rejection_reason')->nullable()->after('report_reason');
-        });
 
-        // 2) Extend enum values (MySQL) to support the new workflow
-        // If your status is enum currently:
-        DB::statement("ALTER TABLE `reviews` MODIFY `status` ENUM(
-            'pending_moderation',
-            'pending_verification',
-            'approved',
-            'rejected'
-        ) NOT NULL DEFAULT 'pending_moderation'");
+            // 2) Standard Laravel way to change the column
+            // This works on SQLite and MySQL
+            $table->string('status')
+                ->default('pending_moderation')
+                ->change();
+        });
     }
 
     public function down(): void
     {
-        // rollback enum back to old (optional: keep as-is)
-        DB::statement("ALTER TABLE `reviews` MODIFY `status` ENUM(
-            'pending',
-            'approved',
-            'rejected'
-        ) NOT NULL DEFAULT 'pending'");
-
         Schema::table('reviews', function (Blueprint $table) {
             $table->dropConstrainedForeignId('moderated_by');
             $table->dropColumn('moderated_at');
-
             $table->dropConstrainedForeignId('verified_by');
             $table->dropColumn('verified_at');
-
             $table->dropColumn('rejection_reason');
+
+            // Revert status to a simple string or your old enum
+            $table->string('status')->default('pending')->change();
         });
     }
 };

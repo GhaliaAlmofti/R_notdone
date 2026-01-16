@@ -4,100 +4,44 @@ namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
 use App\Models\Review;
-use Illuminate\Http\Request;
+use Illuminate\Http\JsonResponse;
 
 class ReportController extends Controller
 {
-    public function index()
+    public function index(): JsonResponse
     {
-        $reported = Review::with(['school', 'user'])
+        // Get reviews that have been reported (is_reported = true)
+        $reportedReviews = Review::with(['school', 'user'])
             ->where('is_reported', true)
-            ->latest('reported_at')
+            ->latest()
             ->get();
 
-        return view('admin.reports.index', compact('reported'));
+        return response()->json([
+            'reports' => $reportedReviews
+        ]);
     }
 
     /**
-     * Mark report as VALID
-     * - Report is correct
-     * - Review should be hidden / sent back to moderation
+     * Admin decides the report is INVALID (Review stays)
      */
-    public function resolveValid(Review $review)
+    public function resolveInvalid(Review $review): JsonResponse
     {
-        $review->update([
-            'report_status'       => 'resolved_valid',
-            'report_resolved_at'  => now(),
-            'report_resolved_by'  => auth()->id(),
+        $review->update(['is_reported' => false]);
 
-            // Send review back to moderation / hide it
-            'status'              => 'pending', // or 'rejected' if you prefer
-            'moderated_at'        => now(),
-            'moderated_by'        => auth()->id(),
+        return response()->json([
+            'message' => 'Report dismissed. Review remains active.'
         ]);
-
-        return back()->with('success', __('Report marked as valid.'));
     }
 
     /**
-     * Mark report as INVALID
-     * - Report is incorrect
-     * - Review remains visible
+     * Admin decides the report is VALID (Review is deleted)
      */
-    public function resolveInvalid(Review $review)
+    public function resolveValid(Review $review): JsonResponse
     {
-        $review->update([
-            'report_status'       => 'resolved_invalid',
-            'report_resolved_at'  => now(),
-            'report_resolved_by'  => auth()->id(),
+        $review->delete();
 
-            // Clear report flags
-            'is_reported'         => false,
-            'report_reason'       => null,
-            'reported_at'         => null,
-            'reported_by'         => null,
+        return response()->json([
+            'message' => 'Report resolved. Review has been deleted.'
         ]);
-
-        return back()->with('success', __('Report marked as invalid.'));
-    }
-
-    /**
-     * Legacy dismiss action (optional to keep)
-     */
-    public function dismiss(Review $review)
-    {
-        $review->update([
-            'is_reported'   => false,
-            'report_reason' => null,
-            'reported_at'   => null,
-            'reported_by'   => null,
-        ]);
-
-        return back()->with('success', __('Report dismissed.'));
-    }
-
-    /**
-     * Remove review completely (hard moderation)
-     */
-    public function remove(Request $request, Review $review)
-    {
-        $data = $request->validate([
-            'rejection_reason' => ['required', 'string', 'max:500'],
-        ]);
-
-        $review->update([
-            'status'             => 'rejected',
-            'rejection_reason'   => $data['rejection_reason'],
-            'moderated_at'       => now(),
-            'moderated_by'       => auth()->id(),
-
-            // Clear report
-            'is_reported'        => false,
-            'report_reason'      => null,
-            'reported_at'        => null,
-            'reported_by'        => null,
-        ]);
-
-        return back()->with('success', __('Review removed.'));
     }
 }

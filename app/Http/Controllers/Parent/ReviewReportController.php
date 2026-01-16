@@ -5,25 +5,22 @@ namespace App\Http\Controllers\Parent;
 use App\Http\Controllers\Controller;
 use App\Models\Review;
 use Illuminate\Http\Request;
+use Illuminate\Http\JsonResponse;
 
 class ReviewReportController extends Controller
 {
-    public function store(Request $request, Review $review)
+    public function store(Request $request, Review $review): JsonResponse
     {
-        // Only allow reporting approved (public) reviews
         if ($review->status !== 'approved') {
-            abort(403);
+            return response()->json(['message' => 'Review not found or not active.'], 404);
         }
 
         $data = $request->validate([
             'report_reason' => ['required', 'string', 'max:500'],
         ]);
 
-        // Prevent reporting your own review
         if ($review->user_id === auth()->id()) {
-            return back()->withErrors([
-                'report_reason' => __('You cannot report your own review.'),
-            ]);
+            return response()->json(['message' => __('You cannot report your own review.')], 403);
         }
 
         $review->update([
@@ -32,10 +29,8 @@ class ReviewReportController extends Controller
             'reported_at'         => now(),
             'reported_by'         => auth()->id(),
             'report_status'       => 'pending',
-            'report_resolved_at'  => null,
-            'report_resolved_by'  => null,
         ]);
 
-        return back()->with('success', __('Thanks. Your report has been submitted.'));
+        return response()->json(['message' => __('Thanks. Your report has been submitted.')]);
     }
 }

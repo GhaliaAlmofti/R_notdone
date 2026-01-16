@@ -4,56 +4,45 @@ namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
 use App\Models\Review;
-use Illuminate\Http\Request;
+use Illuminate\Http\JsonResponse;
 
 class ReviewModerationController extends Controller
 {
-    public function index()
+    /**
+     * List all reviews pending moderation
+     */
+    public function index(): JsonResponse
     {
         $reviews = Review::with(['school', 'user'])
             ->where('status', 'pending_moderation')
             ->latest()
-            ->get();
+            ->paginate(20);
 
-        return view('admin.reviews.moderation', compact('reviews'));
+        return response()->json($reviews);
     }
 
-    public function approve(Review $review)
+    /**
+     * Move review from Super Admin -> School Admin
+     */
+    public function approve(Review $review): JsonResponse
     {
-        if ($review->status !== 'pending_moderation') {
-            abort(403);
-        }
+        $review->update(['status' => 'pending_verification']);
 
-        $review->update([
-            'status' => 'pending_verification',
-            'moderated_at' => now(),
-            'moderated_by' => auth()->id(),
-            'rejection_reason' => null,
+        return response()->json([
+            'message' => 'Review approved and sent to School Admin for verification.',
+            'review' => $review
         ]);
-
-        return back()->with(
-            'success',
-            __('Sent to school admin for verification.')
-        );
     }
 
-    public function reject(Request $request, Review $review)
+    /**
+     * Reject and delete review
+     */
+    public function reject(Review $review): JsonResponse
     {
-        if ($review->status !== 'pending_moderation') {
-            abort(403);
-        }
+        $review->delete();
 
-        $data = $request->validate([
-            'rejection_reason' => ['required', 'string', 'max:500'],
+        return response()->json([
+            'message' => 'Review has been rejected and removed.'
         ]);
-
-        $review->update([
-            'status' => 'rejected',
-            'moderated_at' => now(),
-            'moderated_by' => auth()->id(),
-            'rejection_reason' => $data['rejection_reason'],
-        ]);
-
-        return back()->with('success', __('Review rejected.'));
     }
 }

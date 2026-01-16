@@ -1,21 +1,21 @@
 <?php
 
 namespace App\Http\Controllers\Parent;
-
 use App\Http\Controllers\Controller;
 use App\Models\School;
 use App\Models\Review;
 use Illuminate\Http\Request;
+use Illuminate\Http\JsonResponse;
 
 class ReviewController extends Controller
 {
-    public function create(School $school)
+    /**
+     * Store a new review.
+     * React will call this via Axios.post(`/api/schools/${slug}/reviews`)
+     */
+    public function store(Request $request, School $school): JsonResponse
     {
-        return view('parent.reviews.create', compact('school'));
-    }
-
-    public function store(Request $request, School $school)
-    {
+        // 1. Validation (Errors automatically return as 422 JSON)
         $validated = $request->validate([
             'student_number' => ['required', 'string', 'max:50'],
             'hygiene' => ['required', 'integer', 'min:0', 'max:5'],
@@ -25,19 +25,19 @@ class ReviewController extends Controller
             'comment' => ['nullable', 'string', 'max:2000'],
         ]);
 
+        // 2. Duplicate Check
         $already = Review::where('school_id', $school->id)
             ->where('user_id', auth()->id())
             ->exists();
 
         if ($already) {
-            return back()
-                ->withErrors([
-                    'student_number' => __('You already submitted a review for this school.')
-                ])
-                ->withInput();
+            return response()->json([
+                'message' => __('You already submitted a review for this school.'),
+                'errors' => ['student_number' => [__('Duplicate review detected.')]]
+            ], 403); // 403 Forbidden
         }
 
-        // ✅ Calculate overall rating
+        // 3. Calculation
         $overall = (
             $validated['hygiene'] +
             $validated['management'] +
@@ -45,40 +45,38 @@ class ReviewController extends Controller
             $validated['parent_communication']
         ) / 4;
 
-        Review::create([
+        // 4. Create Review
+        $review = Review::create([
             'school_id' => $school->id,
             'user_id' => auth()->id(),
             'student_number' => $validated['student_number'],
-
             'hygiene' => $validated['hygiene'],
             'management' => $validated['management'],
             'education_quality' => $validated['education_quality'],
             'parent_communication' => $validated['parent_communication'],
-
-            // ✅ stored once, no recalculation needed later
             'overall_rating' => round($overall, 1),
-
             'comment' => $validated['comment'] ?? null,
-
-            // workflow start
             'status' => 'pending_moderation',
         ]);
 
-        return redirect()
-            ->route('parent.schools.show', $school)
-            ->with(
-                'success',
-                __('Review submitted. Waiting for review moderation.')
-            );
+        // 5. Return JSON Success (No redirect!)
+        return response()->json([
+            'message' => __('Review submitted. Waiting for review moderation.'),
+            'review' => $review
+        ], 201); // 201 Created
     }
 
-    public function myReviews()
+    /**
+     * Get logged-in user's reviews.
+     * React will call this for the "My Reviews" page
+     */
+    public function myReviews(): JsonResponse
     {
-        $reviews = Review::with('school')
+        $reviews = Review::with('school:id,name,slug,logo_path') // Get school info too
             ->where('user_id', auth()->id())
             ->latest()
             ->paginate(10);
 
-        return view('parent.reviews.my', compact('reviews'));
+        return response()->json($reviews);
     }
 }

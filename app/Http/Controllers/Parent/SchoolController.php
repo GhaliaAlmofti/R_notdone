@@ -5,11 +5,14 @@ namespace App\Http\Controllers\Parent;
 use App\Http\Controllers\Controller;
 use App\Models\School;
 use Illuminate\Http\Request;
+use Illuminate\Http\JsonResponse;
 
 class SchoolController extends Controller
 {
-    // Search page
-    public function index(Request $request)
+    /**
+     * Search page - returns JSON for React
+     */
+    public function index(Request $request): JsonResponse
     {
         $q = trim((string) $request->query('q', ''));
         $area = trim((string) $request->query('area', ''));
@@ -18,7 +21,7 @@ class SchoolController extends Controller
 
         $schools = collect();
 
-        // IMPORTANT: no results until user searches anything
+        // Query logic stays the same
         if ($q !== '' || $area !== '' || $category !== '' || $level !== '') {
             $schools = School::query()
                 ->when($q !== '', fn($query) => $query->where('name', 'like', "%{$q}%"))
@@ -35,18 +38,38 @@ class SchoolController extends Controller
                 ->get();
         }
 
-        // dropdown options from DB (simple + clean)
+        // Dropdown options
         $areas = School::query()->select('area')->distinct()->orderBy('area')->pluck('area');
         $categories = School::query()->select('category')->distinct()->orderBy('category')->pluck('category');
         $levels = School::query()->select('level')->distinct()->orderBy('level')->pluck('level');
 
-        return view('parent.schools.index', compact('schools', 'q', 'area', 'category', 'level', 'areas', 'categories', 'levels'));
+        // ✅ RETURN JSON FOR REACT
+        return response()->json([
+            'schools' => $schools,
+            'filters' => [
+                'areas' => $areas,
+                'categories' => $categories,
+                'levels' => $levels
+            ],
+            'meta' => [
+                'query' => $q,
+                'current_area' => $area,
+                'current_category' => $category,
+                'current_level' => $level,
+            ]
+        ]);
     }
 
-    // School profile page
-    public function show(School $school)
+    /**
+     * School profile page
+     */
+    public function show(School $school): JsonResponse
     {
+        // Load relationships and counts in one go for efficiency
+        $school->load(['photos']);
+
         $approvedReviews = $school->reviews()
+            ->with('user:id,name') // Include user name for the review card
             ->where('status', 'approved')
             ->latest()
             ->get();
@@ -55,11 +78,11 @@ class SchoolController extends Controller
             ->where('status', 'approved')
             ->avg('overall_rating');
 
-        return view('parent.schools.show', [
+        // ✅ RETURN JSON FOR REACT
+        return response()->json([
             'school' => $school,
             'approvedReviews' => $approvedReviews,
-            'avgRating' => $avg,
+            'avgRating' => round((float)$avg, 1), // Format to 1 decimal place
         ]);
     }
 }
-

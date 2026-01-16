@@ -9,11 +9,15 @@ use Illuminate\Support\Facades\App;
 class SetLocale
 {
     public function handle(Request $request, Closure $next)
-    {
-        $locale = session('locale', config('app.locale', 'en'));
-        App::setLocale($locale);
+{
+    // Priority: 1. Header from React, 2. Session, 3. Default
+    $locale = $request->header('Accept-Language', session('locale', config('app.locale')));
 
-        return $next($request);
-    }
+    // Ensure it's just 'ar' or 'en'
+    $locale = substr($locale, 0, 2);
+
+    App::setLocale($locale);
+    return $next($request);
+}
 }
 

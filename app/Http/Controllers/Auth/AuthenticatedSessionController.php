@@ -4,56 +4,42 @@ namespace App\Http\Controllers\Auth;
 
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Auth\LoginRequest;
-use Illuminate\Http\RedirectResponse;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
-use Illuminate\View\View;
 
 class AuthenticatedSessionController extends Controller
 {
     /**
-     * Display the login view.
-     */
-    public function create(): View
-    {
-        return view('auth.login');
-    }
-
-    /**
      * Handle an incoming authentication request.
      */
-    public function store(LoginRequest $request): RedirectResponse
+    public function store(LoginRequest $request): JsonResponse
     {
         $request->authenticate();
 
-        $request->session()->regenerate();
-
         $user = $request->user();
 
-        // ✅ Role-based redirect after login
-        if ($user->role === 'super_admin') {
-            return redirect()->route('admin.reviews.moderation');
-        }
+        // Create a new Sanctum token for this session
+        $token = $user->createToken('auth_token')->plainTextToken;
 
-        if ($user->role === 'school_admin') {
-            return redirect()->route('school_admin.profile.edit');
-        }
-
-
-        // Parent (default)
-        return redirect()->route('parent.schools.index');
+        return response()->json([
+            'message' => 'Login successful',
+            'access_token' => $token,
+            'token_type' => 'Bearer',
+            'user' => $user // Send user details so React knows the role (parent/admin)
+        ]);
     }
 
     /**
      * Destroy an authenticated session.
      */
-    public function destroy(Request $request): RedirectResponse
+    public function destroy(Request $request): JsonResponse
     {
-        Auth::guard('web')->logout();
+        // Revoke the token that was used for the current request
+        $request->user()->currentAccessToken()->delete();
 
-        $request->session()->invalidate();
-        $request->session()->regenerateToken();
-
-        return redirect('/');
+        return response()->json([
+            'message' => 'Logged out successfully'
+        ]);
     }
 }
