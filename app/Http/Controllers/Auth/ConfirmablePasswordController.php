@@ -11,7 +11,7 @@ use Illuminate\Validation\ValidationException;
 class ConfirmablePasswordController extends Controller
 {
     /**
-     * Confirm the user's password for React/API.
+     * Confirm the user's password for React/API using plain-text.
      */
     public function store(Request $request): JsonResponse
     {
@@ -20,22 +20,18 @@ class ConfirmablePasswordController extends Controller
             'password' => ['required', 'string'],
         ]);
 
-        // 2. Check if the password matches the authenticated user
-        if (! Auth::guard('web')->validate([
-            'email' => $request->user()->email,
-            'password' => $request->password,
-        ])) {
-            // Return a 422 Unprocessable Entity error (standard for validation failure)
+        // 2. Check if the plain-text password matches the authenticated user
+        // We use a direct comparison instead of Auth::validate()
+        if ($request->user()->password !== $request->password) {
             throw ValidationException::withMessages([
                 'password' => [__('auth.password')],
             ]);
         }
 
-        // 3. For SPA/React, we can store the confirmation in the session
-        // or return a temporary signed status.
+        // 3. For SPA/React, store the confirmation in the session
         $request->session()->put('auth.password_confirmed_at', time());
 
-        // 4. Return JSON success so React knows to proceed
+        // 4. Return JSON success
         return response()->json([
             'message' => __('Password confirmed successfully.'),
             'confirmed' => true

@@ -50,7 +50,7 @@ class User extends Authenticatable
     {
         return [
             'email_verified_at' => 'datetime',
-            'password' => 'hashed',
+            // 'password' => 'hashed',  <-- MAKE SURE THIS LINE IS REMOVED OR COMMENTED OUT
         ];
     }
 
@@ -100,4 +100,3 @@ class User extends Authenticatable
         return $this->hasMany(Review::class, 'approved_by');
     }
 }
-

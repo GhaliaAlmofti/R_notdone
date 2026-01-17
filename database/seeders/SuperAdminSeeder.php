@@ -24,15 +24,10 @@ class SuperAdminSeeder extends Seeder
             ['email' => 'admin@searchreviews.test'],
             [
                 'name' => 'Super Admin',
-                'phone' => '0000000000',
-                'city' => null,
-                'terms_accepted' => true,
+                'password' => $superAdminPassword, // Removed Hash::make()
                 'role' => 'super_admin',
-                'password' => Hash::make($superAdminPassword),
+                // ... other fields
             ]
         );
     }
 }
-
-
-

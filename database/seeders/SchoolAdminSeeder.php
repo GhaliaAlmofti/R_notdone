@@ -45,7 +45,7 @@ class SchoolAdminSeeder extends Seeder
                 ['email' => $data['email']],
                 [
                     'name'            => 'School Admin - ' . $school->name,
-                    'password'        => Hash::make($schoolAdminPassword),
+                    'password'        => $schoolAdminPassword, // Removed Hash::make()
                     'role'            => 'school_admin',
                     'phone'           => '0910000000',
                     'city'            => 'Benghazi',

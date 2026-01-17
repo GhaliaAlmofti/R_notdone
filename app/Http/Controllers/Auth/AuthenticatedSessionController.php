@@ -4,30 +4,36 @@ namespace App\Http\Controllers\Auth;
 
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Auth\LoginRequest;
-use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\Auth;
+use App\Models\User;
 
 class AuthenticatedSessionController extends Controller
 {
     /**
      * Handle an incoming authentication request.
      */
-    public function store(LoginRequest $request): JsonResponse
+    public function store(Request $request): \Illuminate\Http\JsonResponse
     {
-        $request->authenticate();
+        $user = \App\Models\User::where('email', $request->email)->first();
 
-        $user = $request->user();
-
-        // Create a new Sanctum token for this session
-        $token = $user->createToken('auth_token')->plainTextToken;
-
-        return response()->json([
-            'message' => 'Login successful',
-            'access_token' => $token,
-            'token_type' => 'Bearer',
-            'user' => $user // Send user details so React knows the role (parent/admin)
+        // This will write the result to storage/logs/laravel.log
+        \Illuminate\Support\Facades\Log::info('Login Attempt Details:', [
+            'typed_email' => $request->email,
+            'typed_password' => $request->password,
+            'db_password' => $user ? $user->password : 'USER NOT FOUND',
+            'match' => $user ? ($request->password === $user->password) : false,
         ]);
+
+        if (! $user || $request->password !== $user->password) {
+            return response()->json(['message' => 'Invalid email or password.'], 401);
+        }
+
+        \Illuminate\Support\Facades\Auth::login($user);
+        $request->session()->regenerate();
+
+        return response()->json(['user' => $user]);
     }
 
     /**
@@ -35,11 +41,11 @@ class AuthenticatedSessionController extends Controller
      */
     public function destroy(Request $request): JsonResponse
     {
-        // Revoke the token that was used for the current request
-        $request->user()->currentAccessToken()->delete();
+        Auth::guard('web')->logout();
 
-        return response()->json([
-            'message' => 'Logged out successfully'
-        ]);
+        $request->session()->invalidate();
+        $request->session()->regenerateToken();
+
+        return response()->json(['message' => 'Logged out']);
     }
 }
